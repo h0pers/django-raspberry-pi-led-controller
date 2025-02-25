@@ -8,7 +8,7 @@
   <meta http-equiv="X-UA-Compatible" content="ie=edge">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
   <link rel="stylesheet" href="{% static 'assets/plugins/css/coloris.min.css' %}"/>
-  <title>Document</title>
+  <title>Painter</title>
   <style>
     .led-grid {
       display: grid;
@@ -18,38 +18,59 @@
     }
     .led-input {
       cursor: crosshair;
-      width: 30px;
-      height: 30px;
+      width: 60px;
+      height: 60px;
+    }
+    body {
+      min-height: 100vh;
     }
   </style>
 </head>
-<body>
+<body class="bg-dark text-white">
   <div class="container">
     <div class="hero-content">
       <h1>Paint Your Image</h1>
       <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. A ad aperiam corporis dolores ducimus eligendi eum eveniet exercitationem, laudantium molestiae nesciunt nulla optio perferendis praesentium quam quia ratione, repellendus voluptatem!</p>
-      <input type="text" class="color-picker">
-      <button class="button button-primary reset-button">Reset Board</button>
+      <div class="d-flex gap-3">
+        <input type="text" class="color-picker h-100">
+        <button class="btn btn-primary reset-button">Reset Board</button>
+      </div>
+      <ul class="d-flex gap-5 mt-3 fw-bolder text-capitalize">
+        <li>Choose color</span>
+        <li>Hold Left Button to Draw</span>
+        <li>Hold CTRL to clear</span>
+      </ul>
     </div>
-    <div class="led-grid mt-5 col-1">
-      {% for i in led_range %}
-      <input class="form-check-input led-input" type="checkbox">
-      {% endfor %}
+    <div class="d-flex justify-content-between align-items-center gap-5">
+      <div class="led-grid mt-5">
+        {% for i in led_range %}
+        <input class="form-check-input led-input" type="checkbox">
+        {% endfor %}
+      </div>
+      
+      <img src="{% static "assets/img/9ldko4.jpg" %}"></img>
     </div>
   </div>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
   <script src="{% static 'assets/plugins/js/coloris.min.js' %}"></script>
   <script>
-    const socket = new WebSocket("ws/sensehat/");
+    const defaultColor = 'rgb(0, 0, 0)';
+    
+    const socket = new WebSocket("ws://127.0.0.1:8000/ws/sensehat/");
 
-    socket.onmessage = function (event) {
+    socket.onerror = function (event) {
+      console.log(event.data);
+      console.log("asd");
+    }
+    
+    socket.onclose = function (event) {
+      console.log("asd");
       console.log(event.data);
     }
 
     function activateColorInput(element) {
       const color = $(document.body).attr('data-current-color')
       $(element).attr('data-color', color);
-      $(element).attr('data-index', $(element).index());
       $(element).prop('checked', true);
       $(element).css('background-color', color);
     }
@@ -69,15 +90,13 @@
     function sendColorData() {
       const data = {};
 
-      $('[data-color]').each(function() {
-        const index = $(this).attr('data-index');
-        const color = $(this).attr('data-color');
-
-        if (index && color) {
-          const tuple = rgbToTuple(color);
-          if (tuple) {
-            data[index] = tuple;
-          }
+      $('.led-input').each(function() {
+        const index = $(this).index();
+        const color = $(this).attr('data-color') ? $(this).attr('data-color') : defaultColor;
+        const tuple = rgbToTuple(color);
+        
+        if (tuple) {
+          data[index] = tuple;
         }
       });
 
@@ -86,10 +105,10 @@
 
     $(document).ready(function () {
       const colorInputs = $('.led-input');
-      const defaultColor = 'rgb(0, 0, 0)'
 
       $(document.body).attr('data-current-color', defaultColor)
-      $(document.body).attr('data-drawing-mode', false);
+      $(document.body).attr('data-drawing-mode', 'sleep');
+      $(document.body).attr('data-drawing', false);
 
       {# Color picker #}
       Coloris({
@@ -115,6 +134,7 @@
         format: 'rgb',
         closeButton: true,
         clearButton: false,
+        alpha: false,
         defaultColor: defaultColor,
         onChange: (color, input) => $(document.body).attr('data-current-color', color)
       });
@@ -122,46 +142,56 @@
 
       socket.onopen = () => {
           $(document).mousedown(function() {
-          $(document.body).attr('data-drawing-mode', 'paint');
-          $(document.body).attr('data-drawing', true);
-      });
+            if ($(document.body).attr('data-drawing-mode') === 'sleep') {
+              $(document.body).attr('data-drawing-mode', 'paint');
+            }
+            $(document.body).attr('data-drawing', true);
+          });
+      
+          $(document).keydown(function(event) {
+            if (event.ctrlKey) {
+             $(document.body).attr('data-drawing-mode', 'erase');
+            }
+          });
+          
+          $(document).keyup(function(event) {
+            if (event.ctrlKey) {
+             $(document.body).attr('data-drawing-mode', 'sleep');
+            }
+          });
+
 
           $(document).mouseup(function() {
               $(document.body).attr('data-drawing-mode', 'sleep');
               $(document.body).attr('data-drawing', false);
           });
 
-          $(document).keydown(function(event) {
-            if (event.ctrlKey && $(document.body).attr('data-drawing') === "true") {
-             $(document.body).attr('data-drawing-mode', 'erase');
-            }
-          });
-
           $(colorInputs).mouseover(function (e) {
             const mode = $(document.body).attr('data-drawing-mode')
-
-            if (mode === "paint") {
-              activateColorInput($(this));
-            }
-            else if (mode === "erase") {
-              deactivateColorInput($(this));
-            }
             if ($(document.body).attr('data-drawing') === "true") {
+              if (mode === "paint") {
+                activateColorInput($(this));
+              }
+              else if (mode === "erase") {
+                deactivateColorInput($(this));
+              } 
               sendColorData();
             }
           });
 
           $(colorInputs).click(function (e) {
             if ($(this).prop('checked')) {activateColorInput($(this))} else deactivateColorInput($(this));
+            sendColorData();
           });
 
           $('.reset-button').click(function (e) {
             $('.led-input').each(function () {
               deactivateColorInput($(this));
             });
+            sendColorData();
           });
       }
-    });
+      });
   </script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
 </body>

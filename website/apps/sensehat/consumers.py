@@ -1,10 +1,14 @@
 import json
 
+from sense_hat import SenseHat
 from channels.generic.websocket import WebsocketConsumer
 
 
 class SensehatConsumer(WebsocketConsumer):
+    sense = SenseHat()
+    
     def connect(self):
+        self.sense.clear()
         self.accept()
 
     def disconnect(self, close_code):
@@ -20,4 +24,8 @@ class SensehatConsumer(WebsocketConsumer):
             }
         """
         data = json.loads(text_data)
+
+        for index, rgb in data.items():
+            self.sense.set_pixel(int(index) % 8, int(index) // 8, tuple(rgb))
+            
         self.send(json.dumps(data))
